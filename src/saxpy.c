@@ -17,6 +17,21 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/time.h>
+#include <string.h>
+#include <pthread.h>
+
+struct Result {
+	double Y_avgs;
+	double* Y;
+};
+
+struct arg {
+	int j;
+	int p;
+	double* Y;
+	double a;
+	double* X;
+};
 
 int main(int argc, char* argv[]){
 	// Variables to obtain command line parameters
@@ -36,10 +51,12 @@ int main(int argc, char* argv[]){
 
 	// Getting input values
 	int opt;
+	//Lee uno por uno argumentos del cmd hasta llegar al final -1
 	while((opt = getopt(argc, argv, ":p:s:n:i:")) != -1){  
 		switch(opt){  
 			case 'p':  
 			printf("vector size: %s\n", optarg);
+			// Convierte el string optarg a entero largo ignorado lo que no sea numeros
 			p = strtol(optarg, NULL, 10);
 			assert(p > 0 && p <= 2147483647);
 			break;  
@@ -63,6 +80,8 @@ int main(int argc, char* argv[]){
 			exit(EXIT_FAILURE);
 		}  
 	}  
+
+	//Generar numeros aleatorios con la semilla seed
 	srand(seed);
 
 	printf("p = %d, seed = %d, n_threads = %d, max_iters = %d\n", \
@@ -73,10 +92,12 @@ int main(int argc, char* argv[]){
 	Y = (double*) malloc(sizeof(double) * p);
 	Y_avgs = (double*) malloc(sizeof(double) * max_iters);
 
+	//Lleno el vector X y Y con numeros aleatorios con tamaño p
 	for(i = 0; i < p; i++){
 		X[i] = (double)rand() / RAND_MAX;
 		Y[i] = (double)rand() / RAND_MAX;
 	}
+	//Inicializo el vector Y_avgs con 0.0 en todas las casillas
 	for(i = 0; i < max_iters; i++){
 		Y_avgs[i] = 0.0;
 	}
@@ -100,15 +121,39 @@ int main(int argc, char* argv[]){
 
 	/*
 	 *	Function to parallelize 
+	 p = Vector Size
+
 	 */
+
+	//Se hace una copia de la variable Y
+	double* Y2 = (double*) malloc(sizeof(double) * p);
+	memcpy(Y2, Y, sizeof(double) * p);
+
+	
+	struct arg arg;
+	arg.a = a;
+	arg.X = X;
+	arg.p = p;
+	arg.j = 0;
+	struct arg arg2;
+
+
 	gettimeofday(&t_start, NULL);
 	//SAXPY iterative SAXPY mfunction
 	for(it = 0; it < max_iters; it++){
-		for(i = 0; i < p; i++){
-			Y[i] = Y[i] + a * X[i];
-			Y_avgs[it] += Y[i];
-		}
-		Y_avgs[it] = Y_avgs[it] / p;
+		arg.Y = Y;
+		arg2.Y = Y;
+		pthread_t p1, p2;
+        pthread_create (&p1, NULL, saxpy, arg);
+        pthread_create (&p2, NULL, saxpy, arg2);
+		void *ret1;
+		void *ret2;
+        pthread_join(p1, &ret1);
+        pthread_join(p2, &ret2);
+		double *result1 = (double*)ret1;
+		double *result2 = (double*)ret2;
+
+		Y_avgs[it] = (*result1+*result2) / p; 		//Saco promedio a todas esas ys de cada iteración
 	}
 	gettimeofday(&t_end, NULL);
 
@@ -128,3 +173,16 @@ int main(int argc, char* argv[]){
 	printf("Last 3 values of Y_avgs: %f, %f, %f \n", Y_avgs[max_iters-3], Y_avgs[max_iters-2], Y_avgs[max_iters-1]);
 	return 0;
 }	
+
+struct Result saxpy(struct arg arg) {
+	double Y_avgs;
+	int i;
+	for(i = arg.j; i < arg.p; i++){				//Recorre toda el vector Y y hace la suma de Ys
+		arg.Y[i] = arg.Y[i] + arg.a * arg.X[i];
+		Y_avgs += arg.Y[i];				
+	}
+	struct Result result;
+    result.Y_avgs = Y_avgs;
+	result.Y = arg.Y;
+	return result;
+}
