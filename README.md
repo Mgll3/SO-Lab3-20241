@@ -60,6 +60,6 @@ A continuación, se detallan algunos enlaces con material de utilidad para el de
 2. **Interlude: Thread API** [[doc]](https://pages.cs.wisc.edu/~remzi/OSTEP/threads-api.pdf) | [[code]](examples_ostep/threads-api/)
 3. **Recusos adicionales** [[doc]](resources/)
 
-##Estrategia de Paralelización para Operación SAXPY
+## Estrategia de Paralelización para Operación SAXPY
 
 En este proyecto, hemos implementado una estrategia de paralelización por datos para realizar la operación SAXPY utilizando tres hilos en total. Nuestro enfoque implica un hilo principal que coordina dos hilos secundarios. Cada hilo secundario opera en un conjunto diferente de datos, dividiéndolos en pares e impares. Esta estrategia se eligió porque permite una distribución eficiente de la carga de trabajo entre los hilos, minimizando la dependencia entre ellos y, por ende, mejorando la capacidad de paralelización. Después de que los hilos secundarios completan sus tareas, el hilo principal los une utilizando la operación join. Esta implementación está diseñada para aprovechar al máximo los recursos disponibles y reducir el tiempo de ejecución total de la operación SAXPY.
