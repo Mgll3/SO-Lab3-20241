@@ -33,6 +33,24 @@ struct arg {
 	double* X;
 };
 
+void *saxpy(void *argY) {
+	// Recibo los datos de afuera del hilo
+	struct arg *arg = (struct arg *)argY;
+	//printf("Y_avgs: %f", arg->Y[1]);
+	double Y_avgs;
+	int i;
+	for(i = arg->j; i < arg->p; i+=2){				//Recorre toda el vector Y y hace la suma de Ys
+		arg->Y[i] = arg->Y[i] + arg->a * arg->X[i];
+		Y_avgs += arg->Y[i];			
+	}
+
+	// Preparo datos para retornar
+	struct Result *result = malloc(sizeof(struct Result));
+    result->Y_avgs = Y_avgs;
+	result->Y = arg->Y;
+	return result;
+}
+
 int main(int argc, char* argv[]){
 	// Variables to obtain command line parameters
 	unsigned int seed = 1;
@@ -125,37 +143,58 @@ int main(int argc, char* argv[]){
 
 	 */
 
-	//Se hace una copia de la variable Y
-	double* Y2 = (double*) malloc(sizeof(double) * p);
-	memcpy(Y2, Y, sizeof(double) * p);
-
 	
-	struct arg arg;
-	arg.a = a;
-	arg.X = X;
-	arg.p = p;
-	arg.j = 0;
-	struct arg arg2;
+	//Inicializo variables para los hilos
+	struct arg *arg = malloc(sizeof (struct arg));
+	arg->a = a;
+	arg->X = X;
+	arg->Y = Y;
+	arg->p = p;
+	arg->j = 0;
 
+	struct arg *arg2 = malloc(sizeof (struct arg));
+	arg2->a = a;
+	arg2->X = X;
+	arg2->Y = Y;
+	arg2->p = p;
+	arg2->j = 1;
 
 	gettimeofday(&t_start, NULL);
 	//SAXPY iterative SAXPY mfunction
+	
 	for(it = 0; it < max_iters; it++){
-		arg.Y = Y;
-		arg2.Y = Y;
+		// Creo los hilos con cada arg
 		pthread_t p1, p2;
         pthread_create (&p1, NULL, saxpy, arg);
         pthread_create (&p2, NULL, saxpy, arg2);
-		void *ret1;
-		void *ret2;
-        pthread_join(p1, &ret1);
-        pthread_join(p2, &ret2);
-		double *result1 = (double*)ret1;
-		double *result2 = (double*)ret2;
 
-		Y_avgs[it] = (*result1+*result2) / p; 		//Saco promedio a todas esas ys de cada iteración
+		// Recibo los returns de los hilos
+		struct Result *ret1;
+		struct Result *ret2;
+		pthread_join(p1, (void **)&ret1);
+		pthread_join(p2, (void **)&ret2);
+		
+		
+		//arg->Y = ret1->Y;
+		//arg2->Y = ret2->Y;
+
+		
+		double result1 = ret1->Y_avgs;
+		double result2 = ret2->Y_avgs;
+		Y_avgs[it] = (result1+result2) / p; 		//Saco promedio a todas esas ys de cada iteración
+		
+		free(ret1);
+		free(ret2);
+		
 	}
 	gettimeofday(&t_end, NULL);
+
+	//? Ingresar las Y de los hilos a Y de afuera, deberia ser un for porque es uno par y otro impar
+	//Y = arg->Y;
+	//Y = arg2->Y;
+
+	free(arg);
+	free(arg2);
 
 #ifdef DEBUG
 	printf("RES: final vector Y= [ ");
@@ -174,15 +213,5 @@ int main(int argc, char* argv[]){
 	return 0;
 }	
 
-struct Result saxpy(struct arg arg) {
-	double Y_avgs;
-	int i;
-	for(i = arg.j; i < arg.p; i++){				//Recorre toda el vector Y y hace la suma de Ys
-		arg.Y[i] = arg.Y[i] + arg.a * arg.X[i];
-		Y_avgs += arg.Y[i];				
-	}
-	struct Result result;
-    result.Y_avgs = Y_avgs;
-	result.Y = arg.Y;
-	return result;
-}
+
+
