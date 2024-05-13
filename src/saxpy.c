@@ -4,7 +4,7 @@
  * @brief      This file implements an iterative saxpy operation
  * 
  * @param[in] <-p> {vector size} 
- * @param[in] <-s> {seed}
+ * @param[in] <-s> {seed} 
  * @param[in] <-n> {number of threads to create} 
  * @param[in] <-i> {maximum itertions} 
  *
@@ -31,25 +31,39 @@ struct arg {
 	double* Y;
 	double a;
 	double* X;
+	double* Y_avgs;
+	int max_iters;
+    int n;
 };
 
 void *saxpy(void *argY) {
 	// Recibo los datos de afuera del hilo
 	struct arg *arg = (struct arg *)argY;
-	//printf("Y_avgs: %f", arg->Y[1]);
-	double Y_avgs;
-	int i;
-	for(i = arg->j; i < arg->p; i+=2){				//Recorre toda el vector Y y hace la suma de Ys
-		arg->Y[i] = arg->Y[i] + arg->a * arg->X[i];
-		Y_avgs += arg->Y[i];			
-	}
+    int j = arg->j;
 
-	// Preparo datos para retornar
-	struct Result *result = malloc(sizeof(struct Result));
-    result->Y_avgs = Y_avgs;
-	result->Y = arg->Y;
-	return result;
+	pthread_mutex_t mutex;
+
+	double Y_avgs2;
+	int i;
+	int it;
+	
+	for(it = 0; it < arg->max_iters; it++){
+
+		double Y_avgs2 = 0.0;
+		for(i = j; i < arg->p; i+=arg->n){				//Recorre toda el vector Y y hace la suma de Ys
+
+			arg->Y[i] = arg->Y[i] + arg->a * arg->X[i];
+			Y_avgs2 += arg->Y[i];
+		}
+
+		//Solución race condition
+		pthread_mutex_lock(&mutex);
+		arg->Y_avgs[it] = arg->Y_avgs[it] + (Y_avgs2/arg->p);
+		pthread_mutex_unlock(&mutex);
+
+	}
 }
+
 
 int main(int argc, char* argv[]){
 	// Variables to obtain command line parameters
@@ -137,64 +151,46 @@ int main(int argc, char* argv[]){
 	printf("a= %f \n", a);	
 #endif
 
-	/*
-	 *	Function to parallelize 
-	 p = Vector Size
-
-	 */
-
 	
-	//Inicializo variables para los hilos
-	struct arg *arg = malloc(sizeof (struct arg));
-	arg->a = a;
-	arg->X = X;
-	arg->Y = Y;
-	arg->p = p;
-	arg->j = 0;
-
-	struct arg *arg2 = malloc(sizeof (struct arg));
-	arg2->a = a;
-	arg2->X = X;
-	arg2->Y = Y;
-	arg2->p = p;
-	arg2->j = 1;
+	
 
 	gettimeofday(&t_start, NULL);
 	//SAXPY iterative SAXPY mfunction
+
+    struct arg *arg = malloc(sizeof (struct arg));
+    arg->a = a;
+    arg->X = X;
+    arg->Y = Y;
+    arg->p = p;
+    arg->Y_avgs = Y_avgs;
+    arg->max_iters = max_iters;
+    arg->n = n_threads;
+
+    // Crear un array de hilos y argumentos para pasar a los hilos ...
+    pthread_t threads[n_threads];
+
+    //inicializador de todos los hilos
+    for (i = 0; i < n_threads; i++){
+		
+        arg->j = i;
+
+        // Crear hilo
+        pthread_create(&threads[i], NULL, saxpy, arg);
+
+        // Esperar un poco para que el hilo se cree antes de crear el siguiente hilo
+        usleep(9000);
+
+    }
+    
+    
+    // Esperar a que todos los hilos terminen ...
+    for(int i = 0; i < n_threads; i++) {
+
+        pthread_join(threads[i], NULL);
+
+    }
 	
-	for(it = 0; it < max_iters; it++){
-		// Creo los hilos con cada arg
-		pthread_t p1, p2;
-        pthread_create (&p1, NULL, saxpy, arg);
-        pthread_create (&p2, NULL, saxpy, arg2);
-
-		// Recibo los returns de los hilos
-		struct Result *ret1;
-		struct Result *ret2;
-		pthread_join(p1, (void **)&ret1);
-		pthread_join(p2, (void **)&ret2);
-		
-		
-		//arg->Y = ret1->Y;
-		//arg2->Y = ret2->Y;
-
-		
-		double result1 = ret1->Y_avgs;
-		double result2 = ret2->Y_avgs;
-		Y_avgs[it] = (result1+result2) / p; 		//Saco promedio a todas esas ys de cada iteración
-		
-		free(ret1);
-		free(ret2);
-		
-	}
 	gettimeofday(&t_end, NULL);
-
-	//? Ingresar las Y de los hilos a Y de afuera, deberia ser un for porque es uno par y otro impar
-	//Y = arg->Y;
-	//Y = arg2->Y;
-
-	free(arg);
-	free(arg2);
 
 #ifdef DEBUG
 	printf("RES: final vector Y= [ ");
